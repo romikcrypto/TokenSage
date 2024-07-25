@@ -1,0 +1,118 @@
+import hashlib
+import time
+from typing import List
+
+class Transaction:
+    def __init__(self, sender, recipient, amount):
+        self.sender = sender
+        self.recipient = recipient
+        self.amount = amount
+        self.timestamp = time.time()
+
+    def calculate_hash(self):
+        transaction_string = f"{self.sender}{self.recipient}{self.amount}{self.timestamp}"
+        return hashlib.sha256(transaction_string.encode()).hexdigest()
+
+    def __str__(self):
+        return f"Transaction({self.sender} -> {self.recipient}, Amount: {self.amount})"
+
+class Block:
+    def __init__(self, index, previous_hash, timestamp, transactions: List[Transaction], nonce=0):
+        self.index = index
+        self.previous_hash = previous_hash
+        self.timestamp = timestamp
+        self.transactions = transactions
+        self.nonce = nonce
+        self.hash = self.calculate_hash()
+
+    def calculate_hash(self):
+        transaction_hashes = ''.join(tx.calculate_hash() for tx in self.transactions)
+        block_string = f"{self.index}{self.previous_hash}{self.timestamp}{transaction_hashes}{self.nonce}"
+        return hashlib.sha256(block_string.encode()).hexdigest()
+
+    def __str__(self):
+        return (f"Block(Index: {self.index}, Previous Hash: {self.previous_hash}, "
+                f"Timestamp: {self.timestamp}, Transactions: {len(self.transactions)}, "
+                f"Nonce: {self.nonce}, Hash: {self.hash})")
+
+class Blockchain:
+    def __init__(self, initial_supply):
+        self.chain = [self.create_genesis_block()]
+        self.difficulty = 4
+        self.accounts = {"0": initial_supply}
+
+    def create_genesis_block(self):
+        return Block(0, "0", time.time(), [Transaction("0", "0", 0)])
+
+    def get_latest_block(self):
+        return self.chain[-1]
+
+    def add_block(self, new_block):
+        new_block.previous_hash = self.get_latest_block().hash
+        new_block.hash = new_block.calculate_hash()
+        self.chain.append(new_block)
+
+    def proof_of_work(self, block):
+        while block.hash[:self.difficulty] != '0' * self.difficulty:
+            block.nonce += 1
+            block.hash = block.calculate_hash()
+        return block
+
+    def is_chain_valid(self):
+        for i in range(1, len(self.chain)):
+            current_block = self.chain[i]
+            previous_block = self.chain[i - 1]
+
+            if current_block.hash != current_block.calculate_hash():
+                return False
+
+            if current_block.previous_hash != previous_block.hash:
+                return False
+
+        return True
+
+    def add_transaction(self, transaction):
+        if transaction.sender not in self.accounts or self.accounts[transaction.sender] < transaction.amount:
+            print(f"Transaction {transaction} is invalid due to insufficient balance.")
+            return False
+
+        self.accounts[transaction.sender] -= transaction.amount
+        if transaction.recipient in self.accounts:
+            self.accounts[transaction.recipient] += transaction.amount
+        else:
+            self.accounts[transaction.recipient] = transaction.amount
+        return True
+
+    def mine_block(self, transactions: List[Transaction]):
+        valid_transactions = [tx for tx in transactions if self.add_transaction(tx)]
+        new_block = Block(len(self.chain), self.get_latest_block().hash, time.time(), valid_transactions)
+        mined_block = self.proof_of_work(new_block)
+        self.add_block(mined_block)
+        return mined_block
+
+    def get_balance(self, account):
+        return self.accounts.get(account, 0)
+
+# Example Usage
+token_sage = Blockchain(initial_supply=1000)  # Initial supply assigned to "0" (admin account)
+
+# Transactions
+tx1 = Transaction("0", "alice", 100)
+tx2 = Transaction("alice", "bob", 50)
+tx3 = Transaction("bob", "charlie", 25)
+
+# Mining blocks with transactions
+token_sage.mine_block([tx1])
+token_sage.mine_block([tx2, tx3])
+
+# Printing the blockchain
+for block in token_sage.chain:
+    print(block)
+    for tx in block.transactions:
+        print(f"  {tx}")
+
+# Checking balances
+print("Balance of admin:", token_sage.get_balance("0"))
+print("Balance of Alice:", token_sage.get_balance("alice"))
+print("Balance of Bob:", token_sage.get_balance("bob"))
+print("Balance of Charlie:", token_sage.get_balance("charlie"))
